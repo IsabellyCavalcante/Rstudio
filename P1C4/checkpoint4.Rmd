@@ -1,0 +1,149 @@
+---
+title: "Relatório Final - análise gastos deputados brasileiros"
+author: "Isabelly Cavalcante"
+date: "6 de abril de 2017"
+output: html_notebook
+---
+
+
+## Visão geral
+
+Esta atividade faz parte da disciplina de Fundamentos de Pesquisa em Ciência da Computação II da Pós-Graduação em Ciência da Computação na Universidade Federal de Campina Grande. Nosso objetivo aqui é ainda se familiarizar com a ferramenta R, construindo nossas próprias perguntas, analisando os dados e respondendo-as. As perguntas que escolhi responder foram:
+
+**1) Qual a distribuição de deputados que gastaram com PARTICIPAÇÃO EM CURSO, PALESTRA OU EVENTO SIMILAR?**
+
+**2) Qual o período do ano que os deputados gastam mais com bilhetes aéreos?**
+
+## Pergunta 1
+Essa primeira pergunta eu fiz pensando analisar um tipo de despesa que não tinha valores de gasto altos, mas que deveria ter um papel importante na formação do parlamentar.
+Começamos então carregando os dados gerais e filtrando apenas as despesas relacionadas a "PARTICIPAÇÃO EM CURSO, PALESTRA OU EVENTO SIMILAR", para isso eu utilizei o numSubCota.
+
+```{r}
+library(readr)
+library(dplyr, warn.conflicts = F)
+library(ggplot2)
+
+gastos_total <- read_csv("~/Dados_FPCC2/gastos-cota_atividade_parlamentar.csv")
+
+gastos_Evento = gastos_total %>%
+  filter(numSubCota == 137) %>%
+  group_by(txNomeParlamentar, vlrLiquido)
+```
+
+Uma vez que os dados foram carregados e filtrados eu utilizo um gráfico de nuvens para mostrar a distribuição do gastos de cada deputado referente a essa despesa em questão.
+```{r}
+ggplot(gastos_Evento, aes(x="", y=vlrLiquido)) +
+  geom_jitter(alpha = .2)+
+  geom_hline(aes(yintercept=median(vlrLiquido), color="mediana")) +
+  ggtitle("Distribuição dos gastos referentes a participação em eventos") + 
+  labs(x='Deputados', y='Valor líquido gasto')
+
+```
+Cada ponto desse gáfico representa o valor gasto por um deputado referente a essa despesa de 2015-2017. A partir dele gráfico podemos concluir que felizmente o valor gasto com eventos por metade desses deputados é bastante alto, como pode-se perceber ao notar os pontos próximos a linha vermelha (que marca o valor mediano dos gastos) são maiores que os que estão bem abaixo da linha. Importante notar também que há deputados que gastaram 0, nesse ponto ao analisar percebi que foi porque o valor foi restituido, por isso o valor líquido é 0.
+
+Após esse gráfico me veio uma outra pergunta: **Quais estados gastaram mais dentre os estados que gastaram acima da mediana?** Para responder essa pergunta eu comecei filtrando dos resultados anteriores os deputados que gastaram mais que o valor mediano, depois agrupei e somei os valores por estado.
+
+```{r}
+gastos_Eventos_Por_Estado = gastos_Evento %>%
+  filter(vlrLiquido > median(sd$vlrLiquido)) %>%
+  group_by(sgUF, vlrLiquido) %>%
+  summarise(valor = sum(vlrLiquido))
+
+ggplot(gastos_Eventos_Por_Estado, aes(x = sgUF, y = valor)) +
+  geom_bar(stat = "identity") +
+  labs(x='Estados', y='Soma valor líquido gasto')
+```
+Com o gráfico acima podemos inferir que os estados que gastaram mais dentre os estados que gastaram acima da mediana foi a Bahia, Ceará e Paraná.
+
+## Pergunta 2
+Essa segunda pergunta eu estava curiosa para detectar em qual período do ano os deputados viajaram mais. Para ela eu juntei os gastos do tipo "Emissão Bilhete Aéreo" e "PASSAGENS AÉREAS" porque referem a mesma atividade. Eu também decidi filtrar os dados por ano para poder analisar os resultados e depois compara-los. Então vamos la! Depois de filtrar eu agrupei e somei os gastos por mês e plotei em um histograma.
+
+```{r}
+gastos_16_aviao = gastos_total %>% 
+  filter(numAno == '2016') %>%
+  filter(txtDescricao == "Emissão Bilhete Aéreo" | txtDescricao == "PASSAGENS AÉREAS")
+
+gastos_por_mes_16 = gastos_16_aviao %>% 
+  group_by(numMes) %>%
+  summarise(valor = sum(vlrLiquido)) %>%
+  arrange(numMes)
+
+ggplot(gastos_por_mes_16) +
+  geom_histogram(stat = "identity", mapping = aes(x = reorder(numMes, numMes), y = valor), bins = 12) +
+  geom_hline(aes(yintercept = median(gastos_por_mes_16$valor), color="mediana")) +
+  ggtitle("Gasto dos deputados em viagens por mes") + 
+  labs(x='Mês', y='Valor total gasto')
+
+```
+Com esse gráfico pode-se perceber que os deputados gastam mais em dois períodos do ano, de março-junho e de agosto-novembro. Pegando apenas esses meses onde o gasto é maior que a mediana ficaremos com o seguinte:
+
+```{r}
+gasto_Semestre_16 = gastos_por_mes_16 %>%
+  filter(valor > median(gastos_por_mes_16$valor)) %>%
+  group_by(numMes < 6) %>%
+  summarise(valorSemestre = sum(valor))
+
+ggplot(gasto_Semestre_16, aes(x = gasto_Semestre_16$`numMes < 6`, y=gasto_Semestre_16$valorSemestre)) + 
+  geom_bar(stat = "identity") +
+  labs(x = 'Meses < Junho', y = 'Valor total gasto')
+```
+Percebe-se por fim que os meses do segundo semestre, mais especificamente agosto, outubro e novembro, tiveram o valor de gasto total maior que o do primeiro semestre, março, maio e junho.
+
+Agora faremos o mesmo para 2015.
+
+```{r}
+gastos_15_aviao = gastos_total %>% 
+  filter(numAno == '2015') %>%
+  filter(txtDescricao == "Emissão Bilhete Aéreo" | txtDescricao == "PASSAGENS AÉREAS")
+
+gastos_por_mes_15 = gastos_15_aviao %>% 
+  group_by(numMes) %>%
+  summarise(vlrLiquido = sum(vlrLiquido)) %>%
+  arrange(numMes)
+
+ggplot(gastos_por_mes_15) +
+  geom_histogram(stat = "identity", mapping = aes(x = reorder(numMes,numMes), y = vlrLiquido), bins = 12) +
+  geom_hline(aes(yintercept = median(gastos_por_mes_15$vlrLiquido), color = "mediana")) +
+  labs(x = 'Mês', y = 'Valor total gasto') 
+```
+Notamos nesse gráfico uma continuidade entre os meses que mais gastaram, enquanto que no ano de 2016 havia buracos entre os meses com maior gasto. Fazendo também a mesma análise por semestre teremos:
+
+```{r}
+gasto_Semestre_15 = gastos_por_mes_15 %>%
+  filter(vlrLiquido > median(gastos_por_mes_15$vlrLiquido)) %>%
+  group_by(numMes < 6) %>%
+  summarise(valor = sum(vlrLiquido))
+
+ggplot(gasto_Semestre_15, aes(x = gasto_Semestre_15$`numMes < 6`, y = gasto_Semestre_15$valor)) + 
+  geom_bar(stat = "identity") +
+  labs(x = 'Meses < Junho', y = 'Valor total gasto')
+```
+Agora vemos que os valores gastos nos semestres quase se igualam, muito diferente que 2016 onde um era quase metade do outro. Por fim chegamos ao resultado que os meses do segundo semestre tiveram mais gastos com viagens que o resto do ano tanto para 2015 como 2016.
+
+Após isso eu me fiz outra pergunta: **Qual a variação da porcentagem de passagens gastas com outras pessoas que não sejam os deputados?** Para isso eu escolhi apenas um ano, 2015, depois filtrei em uma tabela a quantidade de passagens gastas com o próprio deputado e em outra a quantidade de passagens gastas com outras pessoas. Depois fiz o merge das duas e plotei o gráfico 
+
+```{r}
+gastos_passagens_nao_pessoais = gastos_15_aviao %>%
+  filter(txtPassageiro != txNomeParlamentar) %>%
+  group_by(txNomeParlamentar)%>%
+  summarise(outros = n()) %>%
+  arrange(txNomeParlamentar)
+
+gastos_passagens_pessoais = gastos_15_aviao %>%
+  filter(txtPassageiro == txNomeParlamentar) %>%
+  group_by(txNomeParlamentar)%>%
+  summarise(proprio = n())%>%
+  arrange(txNomeParlamentar)
+
+gastos_ambos = merge(gastos_passagens_nao_pessoais,gastos_passagens_pessoais, by = "txNomeParlamentar") %>%
+  arrange(txNomeParlamentar)
+
+gastos_ambos$porcentagem = gastos_ambos$outros / (gastos_ambos$proprio + gastos_ambos$outros)
+
+ggplot(gastos_ambos, aes(x = "", y = porcentagem)) + 
+  geom_boxplot() + 
+  geom_point(position = position_jitter(width = .1), alpha= .5) +
+  labs(x = 'Deputados', y = 'Porcentagem de gasto com outras pessoas')
+
+```
+Ao analisar o gráfico é possível afirmar que 75% dos deputados gastam 25% das passagens com outras pessoas.

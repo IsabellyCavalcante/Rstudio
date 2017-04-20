@@ -1,0 +1,115 @@
+---
+title: "Análise de dados de gastos dos deputados brasileiros"
+author: "Isabelly Cavalcante"
+date: "30 de março de 2017"
+output: html_notebook
+---
+
+## 1) Visão geral
+Esta atividade faz parte da disciplina de Fundamentos de Pesquisa em Ciência da Computação II da Pós-Graduação em Ciência da Computação na Universidade Federal de Campina Grande. Nosso objetivo aqui é se familiarizar com a ferramenta analisando dados e respondendo a duas perguntas:
+
+1) Em que tipo de despesas os parlamentares gastam mais recursos de sua cota?
+
+2) Que tipos de despesa tem valores que mais variam quando comparamos os deputados?
+
+## 2) Dados
+Os dados que são a base da análise descrevem os gastos realizados pelos deputados brasileiros no período de 2015-hoje. Eles foram coletados do site da transparência da camâra dos deputados em http://www2.camara.leg.br/transparencia/cota-para-exercicio-da-atividade-parlamentar/dados-abertos-cota-parlamentar. As explicações sobre cada dado disponível se encontra em http://www2.camara.leg.br/transparencia/cota-para-exercicio-da-atividade-parlamentar/explicacoes-sobre-o-formato-dos-arquivos-xml.
+
+Devido a enorme lista de variáveis existentes segue abaixo uma explicação sobre as variáveis que serão faladas aqui (no contexto da Cota CEAP).
+
+txNomeParlamentar | Nome Parlamentar | Nome adotado pelo Parlamentar ao tomar posse do seu mandato.
+
+sgUF | Sigla da UF | Representa a unidade da federação pela qual o deputado foi eleito e é utilizada para definir o valor da cota a que o deputado tem.
+
+numSubCota | Número da Subcota | Representa o código do Tipo de Despesa referente à despesa realizada pelo deputado e comprovada por meio da emissão de um documento fiscal, a qual é debitada na cota do deputado.
+
+txtDescricao | Descrição da Subcota | O seu conteúdo é a descrição do Tipo de Despesa relativo à despesa em questão.
+
+vlrLiquido | Valor Líquido | Representa o valor líquido do documento fiscal ou do documento que deu causa à despesa e será calculado pela diferença entre o Valor do Documento e o Valor da Glosa. É este valor que será debitado da cota do deputado.
+
+## 3) Atividade
+
+Agora vamos começar a atividade carregando nossas bibliotecas e dados:
+```{r}
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(gmodels)
+
+dados_gastos <- read_csv("~/Dados_FPCC2/gastos-cota_atividade_parlamentar.csv")
+
+```
+
+## 3.1) Deputados por estado
+Como primeira consulta decidi ver o número de deputados por estado para começar a ter uma noção dos dados.
+
+```{r}
+# No comando abaixo eu selecionei apenas os nomes dos deputados e seu estado, agrupei por estado e sumarizei para chamar de somaDepEstado a soma de deputados de um mesmo estado.
+dep_Por_Estado = dados_gastos %>%
+  select(txNomeParlamentar, sgUF) %>%
+  distinct() %>%
+  group_by(sgUF) %>%
+  summarise(qtd_Dep_Estado = n())
+
+# Já aqui eu fiz o plote desses dados usando um gráfico de barras onde x é o estado e y o número de deputados
+ggplot(dep_Por_Estado) +
+  geom_bar(stat="identity", mapping = aes(x = sgUF, y = qtd_Dep_Estado)) + 
+  labs(x='UF', y='Nº deputados')
+
+```
+Pode-se perceber que o estado de São Paulo possui mais deputados que os outros estados. Seguido de Rio de Janeiro e Mato Grosso com quase o mesmo número. Percebe-se também que há deputados com NA nas opções que não foram tratadas a fim de verificar a sua quantia também.
+
+## 3.2) Tipos de despesas existentes
+
+Agora daremos uma olhada nos tipos de despesas existentes nos dados.
+```{r}
+# Aqui consultei dos dados apenas os tipos e ids distintos e renomeei os nomes das colunas para Despesa e Id respectivamente
+tipos_Despesas = dados_gastos %>%
+  select(txtDescricao, numSubCota) %>%
+  distinct()
+  colnames(tipos_Despesas) = c('Despesa', 'Id')
+
+# Impressão da consulta
+tipos_Despesas %>% select(Id, Despesa)
+```
+
+## 3.3) Pergunta 1 - Despesas ordenadas por gastos
+Agora que já vimos alguns gráficos extraidos dos dados responderemos a primeira pergunta da atividade. Eu escolhi a variável numSubCota porque ela fica melhor de visualizar no gráfico do que se eu usasse o txtDescricao. Já a variável vlrLiquido foi porque de acordo com as definições das variáveis é este valor que será debitado da cota do deputado.
+
+```{r}
+qt_Gastos = dados_gastos %>%
+ select(numSubCota, vlrLiquido) %>%
+  group_by(numSubCota) %>%
+  summarise(vlr_Liquido = sum(vlrLiquido))
+
+ggplot(qt_Gastos) +
+  geom_histogram(stat="identity", mapping = aes(x = reorder(numSubCota, -vlr_Liquido), y = vlr_Liquido), bins = 18) + 
+  labs(x='Id da despesa', y='Valor')
+```
+Com isso podemos saber os ids das despesas e os seus respectivos gastos. Sabendo o id podemos consultar na tabela de antes para saber os nomes das despesas. Então respondendo a primeira pergunta da atividade, o tipo de despesa que os deputados mais gastam é a despesa com id 5, que quando verificada na tabela acima vemos que é DIVULGAÇÃO DA ATIVIDADE PARLAMENTAR seguido de	Emissão Bilhete Aéreo (id 999) e LOCAÇÃO OU FRETAMENTO DE VEÍCULOS AUTOMOTORES (id 120).
+
+## 3.4) Pergunta 2 - Despesas com gastos que mais variam quando comparados os deputados
+Essa etapa eu tive um pouco de dificuldade porque mistura três variáveis. Como aconselhado eu diminui o escopo de deputados e de tipo de despesas. O escopo que estarei usando a baixo são os deputados da Paraíba e de Pernambuco, porque são estados onde vivi. E de despesas são DIVULGAÇÃO DA ATIVIDADE PARLAMENTAR(id 5), PASSAGENS AÉREAS(id 9) e MANUTENÇÃO DE ESCRITÓRIO DE APOIO À ATIVIDADE PARLAMENTAR(id 1).
+
+```{r}
+# Primeiro vamos reduzir o escopo dos deputados e dos tipos de despesas
+dep_PB_PE = filter(dados_gastos, dados_gastos$sgUF == "PB"  | dados_gastos$sgUF == "PE")
+
+dep_PB_PE2 = filter(dep_PB_PE, dep_PB_PE$numSubCota == 1 | dep_PB_PE$numSubCota == 5 | dep_PB_PE$numSubCota == 9)
+
+# Aqui eu agrupei os nomes dos deputados e os ids das despesas e sumarizei dos valores liquidos pelo desvio
+x = dep_PB_PE2 %>%
+  select(txNomeParlamentar, numSubCota, vlrLiquido) %>%
+  group_by(numSubCota, txNomeParlamentar) %>%
+  summarise(desvio = sd(vlrLiquido))
+
+# Plotando o gráfico
+ggplot(x) +
+  geom_bar(stat="identity", mapping = aes(x = reorder(numSubCota, -desvio),
+                         y = desvio)) + 
+  labs(x='ID da despesa', y='Variação')
+
+
+```
+
+Aqui podemos ver que das três despesas que os deputados da Paraíba e de Pernambuco tiveram a que mais teve variação foi DIVULGAÇÃO DA ATIVIDADE PARLAMENTAR em seguida MANUTENÇÃO DE ESCRITÓRIO DE APOIO À ATIVIDADE PARLAMENTAR e por fim  PASSAGENS AÉREAS.
