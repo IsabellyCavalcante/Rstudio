@@ -1,0 +1,85 @@
+---
+title: "Pro2CP1 - Revisitando uma visualização sua"
+date: "18 de abril de 2017"
+output: html_notebook
+---
+
+## Visão geral
+
+Esta atividade faz parte da disciplina de Fundamentos de Pesquisa em Ciência da Computação II da Pós-Graduação em Ciência da Computação na Universidade Federal de Campina Grande. Nosso objetivo nesta atividade é:
+
+1) Praticar a crítica e concepção de visualizações
+2) Explorar o processo de gerar figuras profissionais e prontas para a publicação
+
+## Atividade
+
+A visualização que escolhi para refazer foi baseada em uma resposta para o meu lab passado referente a 
+
+primeiro vamos fazer o merge dos dados.
+
+
+```{r}
+library(readr)
+library(dplyr, warn.conflicts = F)
+library(ggplot2)
+
+gastos <- read_csv("~/Dados_FPCC2/gastos-cota_atividade_parlamentar.csv")
+
+dep_detalhes <- read.csv("~/Dados_FPCC2/deputados-detalhes.csv")
+```
+
+```{r}
+gastos_filtrados = gastos %>%
+  select(ideCadastro, numAno, numMes, txtDescricao, vlrLiquido, txtPassageiro, txNomeParlamentar)
+
+dep_filtrados = dep_detalhes %>%
+  select(sexo, ideCadastro)
+
+dados <- merge(gastos_filtrados, dep_filtrados, by = "ideCadastro")
+
+gastos_16_aviao = dados %>% 
+  filter(numAno == '2016') %>%
+  filter(txtDescricao == "Emissão Bilhete Aéreo" | txtDescricao == "PASSAGENS AÉREAS")
+
+gastos_15_aviao = dados %>% 
+  filter(numAno == '2015') %>%
+  filter(txtDescricao == "Emissão Bilhete Aéreo" | txtDescricao == "PASSAGENS AÉREAS")
+
+```
+
+Para 2015
+```{r}
+#TODO fazer função para recuperar pelo trimestre
+
+passagens_nao_pessoais = gastos_15_aviao %>%
+  filter(txtPassageiro != txNomeParlamentar) %>%
+  group_by(txNomeParlamentar, ideCadastro)%>%
+  summarise(outros = n()) %>%
+  arrange(txNomeParlamentar)
+
+passagens_pessoais = gastos_15_aviao %>%
+  filter(txtPassageiro == txNomeParlamentar) %>%
+  group_by(txNomeParlamentar)%>%
+  summarise(proprio = n())%>%
+  arrange(txNomeParlamentar)
+
+gastos_ambos = merge(passagens_nao_pessoais, passagens_pessoais, by = "txNomeParlamentar") %>%
+  arrange(txNomeParlamentar)
+
+gastos_ambos$porcentagem = gastos_ambos$outros / (gastos_ambos$proprio + gastos_ambos$outros)
+
+gastos_ambos = gastos_ambos %>%
+  select(ideCadastro, porcentagem)
+
+gastos_15 = merge(gastos_15_aviao, gastos_ambos, by = "ideCadastro") %>%
+  select(ideCadastro, numAno, numMes, sexo, porcentagem)
+
+```
+
+```{r}
+ggplot(gastos_15_aviao, aes(x= txtDescricao, y=vlrLiquido)) + 
+  geom_violin() +
+  labs(x='Tipo da Despesa', y='Valor Líquido')
+```
+
+
