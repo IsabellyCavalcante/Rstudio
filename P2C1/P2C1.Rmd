@@ -13,9 +13,7 @@ Esta atividade faz parte da disciplina de Fundamentos de Pesquisa em Ciência da 
 
 ## Atividade
 
-A visualização que escolhi para refazer foi baseada em uma resposta para o meu lab passado referente a 
-
-primeiro vamos fazer o merge dos dados.
+A visualização que escolhi para refazer foi baseada em uma resposta de uma atividade minha passada referente a distribuição das porcentagens de passagens gastas com pessoas que não fossem o próprio deputado.
 
 
 ```{r}
@@ -35,44 +33,65 @@ gastos_filtrados = gastos %>%
 dep_filtrados = dep_detalhes %>%
   select(sexo, ideCadastro)
 
-dados <- merge(gastos_filtrados, dep_filtrados, by = "ideCadastro")
+dados_finais <- merge(gastos_filtrados, dep_filtrados, by = "ideCadastro")
 
-gastos_16_aviao = dados %>% 
-  filter(numAno == '2016') %>%
-  filter(txtDescricao == "Emissão Bilhete Aéreo" | txtDescricao == "PASSAGENS AÉREAS")
-
-gastos_15_aviao = dados %>% 
-  filter(numAno == '2015') %>%
+gastos_aviao = dados_finais %>% 
   filter(txtDescricao == "Emissão Bilhete Aéreo" | txtDescricao == "PASSAGENS AÉREAS")
 
 ```
 
-Para 2015
+
 ```{r}
-#TODO fazer função para recuperar pelo trimestre
+despesas_por_trimestre <- function(mes1, mes2, mes3, ano, dados){
+  dados = dados %>%
+    filter(numAno == ano) %>%
+    filter(numMes == mes1 | numMes == mes2 | numMes == mes3)
+  
+  passagens_nao_pessoais = dados %>%
+    filter(txtPassageiro != txNomeParlamentar) %>%
+    group_by(txNomeParlamentar, ideCadastro) %>%
+    summarise(outros = n()) %>%
+    arrange(txNomeParlamentar)
+  
+  passagens_pessoais = dados %>%
+    filter(txtPassageiro == txNomeParlamentar) %>%
+    group_by(txNomeParlamentar, ideCadastro) %>%
+    summarise(proprio = n()) %>%
+    arrange(txNomeParlamentar)
+  
+  passagens_total = merge(passagens_nao_pessoais, passagens_pessoais, by = "txNomeParlamentar", all = TRUE) %>%
+    arrange(txNomeParlamentar)
 
-passagens_nao_pessoais = gastos_15_aviao %>%
-  filter(txtPassageiro != txNomeParlamentar) %>%
-  group_by(txNomeParlamentar, ideCadastro)%>%
-  summarise(outros = n()) %>%
-  arrange(txNomeParlamentar)
+  passagens_total[is.na(passagens_total)] <- 0
 
-passagens_pessoais = gastos_15_aviao %>%
-  filter(txtPassageiro == txNomeParlamentar) %>%
-  group_by(txNomeParlamentar)%>%
-  summarise(proprio = n())%>%
-  arrange(txNomeParlamentar)
+  passagens_total$ideCadastro.y <- with(passagens_total, 
+                                        ifelse( ideCadastro.y == 0, ideCadastro.x, ideCadastro.y ))
 
-gastos_ambos = merge(passagens_nao_pessoais, passagens_pessoais, by = "txNomeParlamentar") %>%
-  arrange(txNomeParlamentar)
+  passagens_total$total = passagens_total$proprio + passagens_total$outros
 
-gastos_ambos$porcentagem = gastos_ambos$outros / (gastos_ambos$proprio + gastos_ambos$outros)
+  passagens_total$porcentagem_outros = passagens_total$outros / passagens_total$total
 
-gastos_ambos = gastos_ambos %>%
-  select(ideCadastro, porcentagem)
+  passagens_total = passagens_total %>%
+    select(ideCadastro.y, porcentagem_outros)
 
-gastos_15 = merge(gastos_15_aviao, gastos_ambos, by = "ideCadastro") %>%
-  select(ideCadastro, numAno, numMes, sexo, porcentagem)
+  dados_trimestre_final = merge(dados1, passagens_total, by.x = "ideCadastro", by.y = "ideCadastro.y") %>%
+    group_by(ideCadastro, sexo, porcentagem_outros) %>%
+    summarise(linhas = n())
+  
+  return (dados_trimestre_final)
+}
+```
+
+```{r}
+#2015
+
+despesas_15_t1 = despesas_por_trimestre(1, 2, 3, 2015, gastos_aviao)
+
+despesas_15_t2 = despesas_por_trimestre(4, 5, 6, 2015, gastos_aviao)
+
+despesas_15_t3 = despesas_por_trimestre(7, 8, 9, 2015, gastos_aviao)
+
+despesas_15_t4 = despesas_por_trimestre(10, 11, 12, 2015, gastos_aviao)
 
 ```
 
