@@ -1,6 +1,6 @@
 ---
 title: "Pro2CP1 - Revisitando uma visualização sua"
-date: "18 de abril de 2017"
+date: "21 de abril de 2017"
 output: html_notebook
 ---
 
@@ -8,27 +8,31 @@ output: html_notebook
 
 Esta atividade faz parte da disciplina de Fundamentos de Pesquisa em Ciência da Computação II da Pós-Graduação em Ciência da Computação na Universidade Federal de Campina Grande. Nosso objetivo nesta atividade é:
 
-1) Praticar a crítica e concepção de visualizações
-2) Explorar o processo de gerar figuras profissionais e prontas para a publicação
+1) **Praticar a crítica e concepção de visualizações**
+2) **Explorar o processo de gerar figuras profissionais e prontas para a publicação**
 
 ## Atividade
 
-A visualização que escolhi para refazer foi baseada em uma resposta de uma atividade passada minha referente a distribuição das porcentagens de passagens gastas com pessoas que não fossem o próprio deputado.
+A visualização que escolhi para refazer foi baseada em uma resposta de uma atividade passada minha referente a distribuição das porcentagens de passagens gastas com pessoas que não fossem o próprio deputado. Nessa nova visualização irei adicionar as variáveis ano, trimestre e sexo. Meu objetivo é que eu possa mostrar a distribuição contínua das porcentagens de passagens gastas com pessoas que não fossem o próprio deputado separando por trimestre, ano e sexo.
 
+Para começar é importante frisar que ao contrário das atividades passadas, nessa eu utilizei de mais de um banco de dados. Além das informações sobre os gastos de cada parlamentar eu utilizarei uma outra tabela que informa detalhes de cada parlamentar. Eu adicionei essa nova tabela para recuperar a informação sobre o sexo de cada parlamentar.
 
 ```{r}
+# Importando bibliotecas e dados
 library(readr)
 library(dplyr, warn.conflicts = F)
 library(ggplot2)
 
-gastos <- read_csv("~/Dados_FPCC2/gastos-cota_atividade_parlamentar.csv")
+gastos <- read_csv("dados/gastos-cota_atividade_parlamentar.csv")
 
-dep_detalhes <- read.csv("~/Dados_FPCC2/deputados-detalhes.csv")
+dep_detalhes <- read.csv("dados/deputados-detalhes.csv")
 ```
+
+Aqui eu seleciono dos dados carregados apenas as colunas que me importam para essa análise. Depois faço um merge com as duas tabelas pelo id de cadastro do deputado e por fim seleciono apenas os gastos relacionados a passagens aéreas. Outro ponto importante a destacar é que eu juntei os gastos do tipo "Emissão Bilhete Aéreo" e "PASSAGENS AÉREAS" porque referem a mesma atividade no mundo real.
 
 ```{r}
 gastos_filtrados = gastos %>%
-  select(ideCadastro, numAno, numMes, txtDescricao, vlrLiquido, txtPassageiro, txNomeParlamentar)
+  select(ideCadastro, numAno, numMes, txtDescricao, txtPassageiro, txNomeParlamentar)
 
 dep_filtrados = dep_detalhes %>%
   select(sexo, ideCadastro)
@@ -40,41 +44,57 @@ gastos_aviao = dados_finais %>%
 
 ```
 
-O próximo passo foi o mais complicado de fazer, pois ele representa uma função que dada um ano, os 3 meses de um trimestre e um conjunto de dados ele irá retornar a porcentagem de passagens gasta com outras pessoas por deputado nesse trimestre desse ano. Além de ter também o sexo do respectivo deputado.
+O próximo passo foi o mais complicado de fazer, pois ele representa uma função que dada um ano, os 3 meses (referentes a um trimestre) e um conjunto de dados ele irá retornar a porcentagem de passagens gasta com outras pessoas por um deputado nesse trimestre do referido ano. Além de ter também o sexo do respectivo deputado.
 
 ```{r}
 porcentagens_por_trimestre <- function(mes1, mes2, mes3, ano, dados){
+  #filtrando o ano e trimestre
   dados = dados %>%
     filter(numAno == ano) %>%
     filter(numMes == mes1 | numMes == mes2 | numMes == mes3)
   
+  #calculando o total de passagens gastas com outros
   passagens_nao_pessoais = dados %>%
     filter(txtPassageiro != txNomeParlamentar) %>%
     group_by(txNomeParlamentar, ideCadastro) %>%
     summarise(outros = n()) %>%
     arrange(txNomeParlamentar)
-  
+    
+  #calculando o total de passagens gastas com o próprio deputado
   passagens_pessoais = dados %>%
     filter(txtPassageiro == txNomeParlamentar) %>%
     group_by(txNomeParlamentar, ideCadastro) %>%
     summarise(proprio = n()) %>%
     arrange(txNomeParlamentar)
   
+  # merge das duas tabelas anteriores pelo nome do parlamentar. DICA: para ter os nomes de 
+  # todos os deputados o merge foi feito usando o "all = TRUE", isso mescla as tabelas e 
+  # quando não encontrar a chave em ambas as tabelas ele seta pra NA o que não tiver, 
+  # dessa forma posso ter os dados de deputados que não gastaram com outras pessoas por 
+  # exemplo (se não usasse o all esses valores seriam retirados da tabela final).
   passagens_total = merge(passagens_nao_pessoais, passagens_pessoais, by = "txNomeParlamentar", all = TRUE) %>%
     arrange(txNomeParlamentar)
 
+  #substituindo valores NAs por 0
   passagens_total[is.na(passagens_total)] <- 0
 
+  # Troca os valores do idCadastro.y que são 0 por idCadastro.x
   passagens_total$ideCadastro.y <- with(passagens_total, 
                                         ifelse(ideCadastro.y == 0, ideCadastro.x, ideCadastro.y))
 
+  # Crio uma nova coluna que é a soma dos valores referentes ao próprio deputado e aos 
+  # outros passageiros
   passagens_total$total = passagens_total$proprio + passagens_total$outros
 
+  # Faço a conta da porcentagem referente aos outros.
   passagens_total$porcentagem_outros = passagens_total$outros / passagens_total$total
 
+  # Seleciono da tabela apenas o idCadastro e a porcentagem dos outros. Isso é basicamente 
+  # cada porcentagem com outros gasta por cada deputado.
   passagens_total = passagens_total %>%
     select(ideCadastro.y, porcentagem_outros)
 
+  # merge da tabela recebida com a tabela anterior agrupando por idCadastro, sexo e porcentagem.
   dados_trimestre_final = merge(dados, passagens_total, by.x = "ideCadastro", by.y = "ideCadastro.y") %>%
     group_by(ideCadastro, sexo, porcentagem_outros) %>%
     summarise(linhas = n())
@@ -83,6 +103,7 @@ porcentagens_por_trimestre <- function(mes1, mes2, mes3, ano, dados){
 }
 ```
 
+Agora que temos a função basta apenas chama-la para cada trimestre de cada ano. Adicionei a cada etapa dessa duas colunas novas: uma referente ao ano e outra ao trimestre.
 ```{r}
 # Dados dos trimestres de 2015
 despesas_15_t1 = porcentagens_por_trimestre(1, 2, 3, 2015, gastos_aviao) %>%
@@ -128,10 +149,23 @@ despesas_16_t4$trimestre = "T4"
 
 ```
 
+Por fim uni todas as tabelas geradas acima para coloca-las em apenas uma tabela que será plotada. Para a visualização escolhi o gráfico violino que abaixo mostra a comparação da distribuição das porcentagem comparando homens e mulheres (no gráfico abaixo é para os meses e todos os anos).
 ```{r}
-ggplot(gastos_15_aviao, aes(x= txtDescricao, y=vlrLiquido)) + 
-  geom_violin() +
-  labs(x='Tipo da Despesa', y='Valor Líquido')
+dados_unidos <- rbind(despesas_15_t1, despesas_15_t2, despesas_15_t3, despesas_15_t4, despesas_16_t1, despesas_16_t2, despesas_16_t3, despesas_16_t4)
+
+ggplot(dados_unidos, aes(x = sexo, y = porcentagem_outros)) +
+  geom_violin()
 ```
 
+Agora a visualização final envolvendo as 4 variáveis:
+```{r}
+ggplot(dados_unidos, aes(x = sexo, y = porcentagem_outros)) +
+  geom_violin(aes(fill = factor(sexo))) +
+  facet_grid(trimestre ~ ano) +
+  scale_fill_discrete(name = "Sexo") +
+  labs(y = 'Porcentagem')
 
+```
+
+A partir dessa imagem podemos ver que comparando os homens no ano de 2015 para o de 2016 eles aparentam ter a mesma distribuição das porcentagens, ao contrário dos das mulheres que nota-se uma boa diferença nos trimestres de 2015 pro de 2016, com exceção do trimestre 1 que se parece bastante.
+Outra informação que pode-se observar é que a distribuição das porcentagens femininas diminuem mais gradualmente que as masculinas que diminuem drasticamente. Por fim é possível afirmar também que as porcentagens mais altas tem concentração maior mais nas mulheres que nos homens, ou seja, as deputadas tem uma faixa de porcentagem de gastos com passagens para outras pessoas mais alta que os homens.
